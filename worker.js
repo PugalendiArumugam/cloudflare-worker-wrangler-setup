@@ -1,4 +1,5 @@
-addEventListener('fetch', event => {
+addEventListener("fetch", (event) => {
+  console.log("🚀 Worker triggered:", event.request.url);
   event.respondWith(handleRequest(event));
 });
 
@@ -7,56 +8,51 @@ async function handleRequest(event) {
   const url = new URL(request.url);
   const path = url.pathname;
   
-  console.log('Processing:', path);
+  console.log("📝 Processing:", { host: url.hostname, path: path });
   
-  // Only cache articles
-  if (path.includes('/homescrtopnews/')) {
+  // Only cache GET requests for homescrtopnews
+  if (request.method === "GET" && path.includes("/homescrtopnews/")) {
+    console.log("✅ Cacheable article detected");
     const cache = caches.default;
     
-    // Create a cache key with only the path to avoid query string issues
-    const cacheKey = new Request(url.origin + path, request);
-    
-    // Try cache first
-    const cached = await cache.match(cacheKey);
+    // Try to get from cache
+    const cached = await cache.match(request);
     
     if (cached) {
-      console.log('✅ Cache HIT:', path);
-      const newResp = new Response(cached.body, cached);
-      newResp.headers.set('X-Cache-Status', 'HIT');
-      newResp.headers.set('X-Worker', 'Cache-Active');
-      newResp.headers.set('Cache-Control', 'public, max-age=3600');
-      return newResp;
+      console.log("🎯 CACHE HIT");
+      const response = new Response(cached.body, cached);
+      response.headers.set("X-Cache-Status", "HIT");
+      response.headers.set("X-Worker", "Cache-Active");
+      response.headers.set("Cache-Control", "public, max-age=3600");
+      return response;
     }
     
-    console.log('❌ Cache MISS:', path);
+    console.log("❌ CACHE MISS");
     const response = await fetch(request);
     
-    // Clone response for caching
+    // Clone for caching
     const responseToCache = response.clone();
     const newResponse = new Response(response.body, response);
     
-    // Add ALL cache headers
-    newResponse.headers.set('X-Cache-Status', 'MISS');
-    newResponse.headers.set('X-Worker', 'Cache-Active');
-    newResponse.headers.set('Cache-Control', 'public, max-age=3600, s-maxage=3600');
-    newResponse.headers.set('CDN-Cache-Control', 'public, max-age=3600');
+    // Add cache headers
+    newResponse.headers.set("X-Cache-Status", "MISS");
+    newResponse.headers.set("X-Worker", "Cache-Active");
+    newResponse.headers.set("Cache-Control", "public, max-age=3600, s-maxage=3600");
+    newResponse.headers.set("CDN-Cache-Control", "public, max-age=3600");
     
-    // Store in cache with simplified key
-    event.waitUntil(cache.put(cacheKey, responseToCache));
+    // Store in cache
+    event.waitUntil(cache.put(request, responseToCache));
+    
     return newResponse;
   }
   
-  // Pass through non-articles
+  // Pass through non-cacheable requests
+  console.log("➡️ Passing through non-cacheable request");
   return fetch(request);
 }
 
-// Cron/Scheduled handler - runs every 30 minutes
-addEventListener('scheduled', event => {
-  event.waitUntil(handleScheduled(event));
+// Cron handler
+addEventListener("scheduled", (event) => {
+  console.log("⏰ Cron job executed:", new Date().toISOString());
+  event.waitUntil(Promise.resolve());
 });
-
-async function handleScheduled(event) {
-  console.log('🕒 Scheduled task running at:', new Date().toISOString());
-  console.log('✅ Scheduled task completed');
-  return new Response('Scheduled task completed successfully');
-}
